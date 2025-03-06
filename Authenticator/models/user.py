@@ -8,7 +8,7 @@ class User:
         """Create a new user in the database"""
         user = {
             'email': email,
-            'password_hash': generate_password_hash(password),
+            'password_hash': generate_password_hash(password, method='pbkdf2:sha256'),
             'is_active': False,
             'storage_limit': 24576,  # Default storage limit: 24GB (in MB)
             'created_at': datetime.utcnow(),

@@ -1,0 +1,11 @@
+flask
+flask-restx
+flask-jwt-extended
+flask-mail
+flask-cors
+pymongo
+python-dotenv
+email-validator
+pyjwt
+Werkzeug
+DNSPython

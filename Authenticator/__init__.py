@@ -68,4 +68,9 @@ def create_app():
     from Authenticator.routes.auth_routes import api as auth_ns
     api.add_namespace(auth_ns, path='/api/auth')
     
+    # Import and register file controller routes
+    from FileController import api as file_ns
+    api.add_namespace(file_ns, path='/api/files')
+    
     return app
+

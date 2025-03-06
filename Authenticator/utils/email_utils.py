@@ -205,15 +205,109 @@ def send_password_reset_email(user_email, token):
     reset_url = f"{current_app.config.get('FRONTEND_URL', 'http://localhost:3000')}/reset-password?token={token}"
     
     html_template = """
-    <html>
-    <body>
-        <h2>Password Reset</h2>
-        <p>You requested a password reset. Please click the link below to reset your password:</p>
-        <p><a href="{{ reset_url }}">Reset Password</a></p>
-        <p>If you did not request a password reset, please ignore this email.</p>
-        <p>This link will expire in 1 hour.</p>
-    </body>
-    </html>
+    <!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đặt Lại Mật Khẩu</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f7f7f7;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 700px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .header img {
+            width: 100px;
+            height: auto;
+        }
+        h2 {
+            color: #222222;
+            font-size: 28px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        p {
+            color: #444444;
+            line-height: 1.8;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+        .button {
+            display: block;
+            width: 200px;
+            margin: 0 auto;
+            padding: 14px 0;
+            font-size: 18px;
+            color: #ffffff;
+            background-color: #28a745;
+            text-decoration: none;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+        }
+        .button:hover {
+            background-color: #218838;
+        }
+        .warning {
+            color: #dc3545;
+            font-weight: bold;
+            font-size: 16px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .info {
+            font-size: 14px;
+            color: #666666;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            color: #888888;
+            font-size: 14px;
+        }
+        .footer a {
+            color: #007bff;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <img src="https://via.placeholder.com/100" alt="Logo">
+        </div>
+        <h2>Đặt Lại Mật Khẩu</h2>
+        <p>Xin chào,</p>
+        <p>Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn. Để tiếp tục, vui lòng nhấp vào nút bên dưới để thiết lập mật khẩu mới.</p>
+        <p style="text-align: center;">
+            <a href="{{ reset_url }}" class="button">Đặt Lại Mật Khẩu</a>
+        </p>
+        <p class="warning">Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này hoặc liên hệ với chúng tôi ngay lập tức.</p>
+        <p class="info">Liên kết này sẽ hết hạn sau 1 giờ vì lý do bảo mật.</p>
+        <div class="footer">
+            <p>Trân trọng,</p>
+            <p>Đội ngũ hỗ trợ của chúng tôi</p>
+            <p>Nếu bạn có bất kỳ câu hỏi nào, vui lòng <a href="mailto:support@example.com">liên hệ với chúng tôi</a>.</p>
+        </div>
+    </div>
+</body>
+</html>
     """
     
     html_content = render_template_string(html_template, reset_url=reset_url)

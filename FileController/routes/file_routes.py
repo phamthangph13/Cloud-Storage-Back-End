@@ -10,18 +10,7 @@ from bson.objectid import ObjectId
 from FileController import api
 from Authenticator import db
 
-# Define storage directory
-UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-
-# Create subdirectories for different file types
-IMAGE_FOLDER = os.path.join(UPLOAD_FOLDER, 'images')
-VIDEO_FOLDER = os.path.join(UPLOAD_FOLDER, 'videos')
-DOCUMENT_FOLDER = os.path.join(UPLOAD_FOLDER, 'documents')
-
-os.makedirs(IMAGE_FOLDER, exist_ok=True)
-os.makedirs(VIDEO_FOLDER, exist_ok=True)
-os.makedirs(DOCUMENT_FOLDER, exist_ok=True)
+# Remove filesystem storage related code
 
 # Define allowed file extensions
 IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'}
@@ -33,17 +22,17 @@ def get_file_type(filename):
     extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
     
     if extension in IMAGE_EXTENSIONS:
-        return 'image', IMAGE_FOLDER
+        return 'image'
     elif extension in VIDEO_EXTENSIONS:
-        return 'video', VIDEO_FOLDER
+        return 'video'
     elif extension in DOCUMENT_EXTENSIONS:
-        return 'document', DOCUMENT_FOLDER
+        return 'document'
     else:
-        return 'other', UPLOAD_FOLDER
+        return 'other'
 
 # File upload parser
 upload_parser = api.parser()
-upload_parser.add_argument('file', location='files', type=FileStorage, required=True, help='File to upload')
+upload_parser.add_argument('files', location='files', type=FileStorage, required=True, action='append', help='Files to upload (multiple allowed)')
 upload_parser.add_argument('description', type=str, help='File description')
 
 # File response model
@@ -77,64 +66,71 @@ class FileUpload(Resource):
     def post(self):
         """Upload a file (image, video, document)"""
         args = upload_parser.parse_args()
-        uploaded_file = args['file']
+        uploaded_files = args['files']
         description = args.get('description', '')
+        results = []
+        errors = []
         
-        if not uploaded_file:
-            return {'message': 'No file provided'}, 400
+        if not uploaded_files:
+            return {'message': 'No files provided'}, 400
         
         # Secure the filename
-        original_filename = secure_filename(uploaded_file.filename)
-        
-        # Determine file type and storage location
-        file_type, storage_folder = get_file_type(original_filename)
-        
-        # Generate a unique filename
-        unique_filename = f"{uuid.uuid4()}_{original_filename}"
-        file_path = os.path.join(storage_folder, unique_filename)
-        
-        # Save the file
-        uploaded_file.save(file_path)
-        
-        # Get file size
-        file_size = os.path.getsize(file_path)
-        
-        # Get user ID from JWT token
-        user_id = get_jwt_identity()
-        
-        # Create file record in database
-        file_record = {
-            'filename': original_filename,
-            'stored_filename': unique_filename,
-            'file_path': file_path,
-            'file_type': file_type,
-            'file_size': file_size,
-            'upload_date': datetime.datetime.now(),
-            'description': description,
-            'user_id': user_id
-        }
-        
-        # Insert into MongoDB
-        result = db.Files.insert_one(file_record)
-        file_id = str(result.inserted_id)
-        
-        # Generate download URL
-        download_url = f"/api/files/download/{file_id}"
-        
-        return {
-            'message': 'File uploaded successfully',
-            'file': {
-                'id': file_id,
-                'filename': original_filename,
-                'stored_filename': unique_filename,
-                'file_type': file_type,
-                'file_size': file_size,
-                'upload_date': file_record['upload_date'].isoformat(),
-                'description': description,
-                'user_id': user_id,
-                'download_url': download_url
-            }
-        }, 200
+        for uploaded_file in uploaded_files:
+            try:
+                original_filename = secure_filename(uploaded_file.filename)
+                
+                # Determine file type and storage location
+                file_type = get_file_type(original_filename)
+                
+                # Generate a unique filename
+                unique_filename = f"{uuid.uuid4()}_{original_filename}"
+                # Read file content as binary
+                file_data = uploaded_file.read()
+                if len(file_data) == 0:
+                    errors.append(f'Empty file: {original_filename}')
+                    continue
+                
+                # Get file size from content length
+                file_size = len(file_data)
+                
+                # Get user ID from JWT token
+                user_id = get_jwt_identity()
+                
+                # Create file record in database
+                file_record = {
+                    'filename': original_filename,
+                    'stored_filename': unique_filename,
+                    'file_data': file_data,
+                    'file_type': file_type,
+                    'file_size': file_size,
+                    'upload_date': datetime.datetime.now(),
+                    'description': description,
+                    'user_id': user_id
+                }
+                
+                # Insert into MongoDB
+                result = db.Files.insert_one(file_record)
+                file_id = str(result.inserted_id)
+                download_url = f"/api/files/download/{file_id}"
+                
+                results.append({
+                    'id': file_id,
+                    'filename': original_filename,
+                    'stored_filename': unique_filename,
+                    'file_type': file_type,
+                    'file_size': file_size,
+                    'upload_date': file_record['upload_date'].isoformat(),
+                    'description': description,
+                    'user_id': user_id,
+                    'download_url': download_url
+                })
+            except Exception as e:
+                errors.append(f'Error uploading {original_filename}: {str(e)}')
+        response = {'message': 'Batch upload completed', 'success_count': len(results), 'files': results}
+        if errors:
+            response['error_count'] = len(errors)
+            response['errors'] = errors
+        return response, 200 if not errors else 207
 
 @api.route('/download/<string:file_id>')
 class FileDownload(Resource):
@@ -161,9 +157,10 @@ class FileDownload(Resource):
             
             # Return the file
             return send_file(
-                file_record['file_path'],
+                BytesIO(file_record['file_data']),
                 as_attachment=True,
-                download_name=file_record['filename']
+                download_name=file_record['filename'],
+                mimetype='application/octet-stream'
             )
             
         except Exception as e:

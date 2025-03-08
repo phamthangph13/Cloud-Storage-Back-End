@@ -9,6 +9,7 @@ import datetime
 from bson.objectid import ObjectId
 from FileController import api
 from Authenticator import db
+from io import BytesIO 
 
 # Remove filesystem storage related code
 
@@ -32,7 +33,7 @@ def get_file_type(filename):
 
 # File upload parser
 upload_parser = api.parser()
-upload_parser.add_argument('files', location='files', type=FileStorage, required=True, action='append', help='Files to upload (multiple allowed)')
+upload_parser.add_argument('file', location='files', type=FileStorage, required=True, action='append', help='Files to upload (multiple allowed)')
 upload_parser.add_argument('description', type=str, help='File description')
 
 # File response model
@@ -66,7 +67,7 @@ class FileUpload(Resource):
     def post(self):
         """Upload a file (image, video, document)"""
         args = upload_parser.parse_args()
-        uploaded_files = args['files']
+        uploaded_files = args['file']
         description = args.get('description', '')
         results = []
         errors = []
@@ -154,6 +155,8 @@ class FileDownload(Resource):
             if file_record['user_id'] != user_id:
                 # In a real app, you might want to check if the file is shared with this user
                 return {'message': 'You do not have permission to access this file'}, 403
+
+            
             
             # Return the file
             return send_file(
@@ -162,6 +165,7 @@ class FileDownload(Resource):
                 download_name=file_record['filename'],
                 mimetype='application/octet-stream'
             )
+            
             
         except Exception as e:
             return {'message': f'Error downloading file: {str(e)}'}, 500

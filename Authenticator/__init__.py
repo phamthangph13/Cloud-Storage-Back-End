@@ -20,7 +20,10 @@ def create_app():
     
     # JWT Configuration
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-key')
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = 3600  # 1 hour
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False # FOREVER
+    app.config['JWT_TOKEN_LOCATION'] = ['headers']
+    app.config['JWT_HEADER_NAME'] = 'Authorization'
+    app.config['JWT_HEADER_TYPE'] = 'Bearer'
     
     # Mail Configuration
     app.config['MAIL_SERVER'] = 'smtp.gmail.com'
@@ -36,7 +39,17 @@ def create_app():
     # Initialize extensions with app
     mail.init_app(app)
     jwt.init_app(app)
-    CORS(app)
+    
+    # Configure CORS with specific options
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": "*",
+            "allow_headers": ["Content-Type", "Authorization"],
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "expose_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": True
+        }
+    })
     
     # Initialize MongoDB connection
     global mongo_client, db

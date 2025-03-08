@@ -1,10 +1,21 @@
 from flask import Flask
+import json
 from flask_mail import Mail
 from flask_jwt_extended import JWTManager
 from flask_restx import Api
 from flask_cors import CORS
 import os
 from pymongo import MongoClient
+from datetime import datetime
+
+# Custom JSON encoder to handle datetime objects
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif hasattr(obj, '__str__'):
+            return str(obj)
+        return super(CustomJSONEncoder, self).default(obj)
 
 # Initialize extensions
 mail = Mail()
@@ -17,6 +28,9 @@ def create_app():
     
     # Configure app
     app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
+    
+    # Set custom JSON encoder
+    app.json_encoder = CustomJSONEncoder
     
     # JWT Configuration
     app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-key')
@@ -76,6 +90,19 @@ def create_app():
     api = Api(app, version='1.0', title='Authentication API',
               description='A simple authentication API with Flask-RestX',
               authorizations=authorizations, security='Bearer Auth')
+    
+    # Configure Flask-RestX to use our custom JSON encoder
+    @api.representation('application/json')
+    def output_json(data, code, headers=None):
+        resp = app.response_class(
+            response=json.dumps(data, cls=CustomJSONEncoder),
+            status=code,
+            mimetype='application/json'
+        )
+        if headers:
+            for header, value in headers.items():
+                resp.headers[header] = value
+        return resp
     
     # Import and register blueprints/routes
     from Authenticator.routes.auth_routes import api as auth_ns

@@ -10,6 +10,7 @@ from bson.objectid import ObjectId
 from FileController import api 
 from Authenticator import db
 from io import BytesIO 
+from CollectionController.models.collection import Collection
 
 # Remove filesystem storage related code
 
@@ -53,6 +54,11 @@ file_model = api.model('File', {
 file_list_model = api.model('FileList', {
     'files': fields.List(fields.Nested(file_model)),
     'total': fields.Integer(description='Total number of files')
+})
+
+# Add to collection request model
+add_to_collection_model = api.model('AddToCollection', {
+    'collection_id': fields.String(required=True, description='ID of the collection to add the file to')
 })
 
 @api.route('/upload')
@@ -293,3 +299,92 @@ class FileDetail(Resource):
             
         except Exception as e:
             return {'message': f'Error deleting file: {str(e)}'}, 500
+
+@api.route('/files/<string:file_id>/add-to-collection')
+class AddFileToCollection(Resource):
+    @jwt_required()
+    @api.expect(add_to_collection_model)
+    @api.doc(responses={
+        200: 'File added to collection successfully',
+        400: 'Invalid input',
+        404: 'File or collection not found',
+        401: 'Unauthorized'
+    })
+    def post(self, file_id):
+        """Add a file to a collection"""
+        try:
+            current_user = get_jwt_identity()
+            data = request.json
+            
+            # Validate input
+            if not data or 'collection_id' not in data:
+                return {'message': 'Collection ID is required'}, 400
+            
+            collection_id = data['collection_id']
+            
+            # Check if file exists and belongs to the user
+            file_record = db.Files.find_one({
+                '_id': ObjectId(file_id),
+                'user_id': current_user
+            })
+            
+            if not file_record:
+                return {'message': 'File not found or you do not have permission to access it'}, 404
+            
+            # Add file to collection
+            updated_collection = Collection.add_file(collection_id, current_user, file_id)
+            
+            if not updated_collection:
+                return {'message': 'Collection not found or you do not have permission to access it'}, 404
+            
+            return {
+                'message': 'File added to collection successfully',
+                'collection': {
+                    'id': str(updated_collection['_id']),
+                    'name': updated_collection['name'],
+                    'files_count': len(updated_collection.get('files', [])),
+                    'updated_at': updated_collection['updated_at']
+                }
+            }, 200
+        except Exception as e:
+            return {'message': f'Error adding file to collection: {str(e)}'}, 400
+
+@api.route('/files/<string:file_id>/remove-from-collection/<string:collection_id>')
+class RemoveFileFromCollection(Resource):
+    @jwt_required()
+    @api.doc(responses={
+        200: 'File removed from collection successfully',
+        404: 'File or collection not found',
+        401: 'Unauthorized'
+    })
+    def delete(self, file_id, collection_id):
+        """Remove a file from a collection"""
+        try:
+            current_user = get_jwt_identity()
+            
+            # Check if file exists and belongs to the user
+            file_record = db.Files.find_one({
+                '_id': ObjectId(file_id),
+                'user_id': current_user
+            })
+            
+            if not file_record:
+                return {'message': 'File not found or you do not have permission to access it'}, 404
+            
+            # Remove file from collection
+            updated_collection = Collection.remove_file(collection_id, current_user, file_id)
+            
+            if not updated_collection:
+                return {'message': 'Collection not found or you do not have permission to access it'}, 404
+            
+            return {
+                'message': 'File removed from collection successfully',
+                'collection': {
+                    'id': str(updated_collection['_id']),
+                    'name': updated_collection['name'],
+                    'files_count': len(updated_collection.get('files', [])),
+                    'updated_at': updated_collection['updated_at']
+                }
+            }, 200
+        except Exception as e:
+            return {'message': f'Error removing file from collection: {str(e)}'}, 400

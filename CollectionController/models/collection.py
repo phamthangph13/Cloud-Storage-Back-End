@@ -22,6 +22,7 @@ class Collection:
         collection = {
             'name': name.strip(),
             'owner_id': owner_id,
+            'files': [],  # Initialize an empty array for file IDs
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
         }
@@ -115,4 +116,101 @@ class Collection:
             
             return result.deleted_count > 0
         except:
-            return False 
+            return False
+            
+    @staticmethod
+    def add_file(collection_id, owner_id, file_id):
+        """
+        Add a file to a collection
+        
+        Args:
+            collection_id (str): ID of the collection
+            owner_id (str): ID of the user owning this collection
+            file_id (str): ID of the file to add
+            
+        Returns:
+            dict: The updated collection or None if not found/updated
+        """
+        try:
+            # Check if the file already exists in the collection
+            collection = db.collections.find_one({
+                '_id': ObjectId(collection_id),
+                'owner_id': owner_id
+            })
+            
+            if not collection:
+                return None
+                
+            # Add file to the collection if it doesn't already exist
+            result = db.collections.update_one(
+                {
+                    '_id': ObjectId(collection_id),
+                    'owner_id': owner_id
+                },
+                {
+                    '$addToSet': {'files': file_id},
+                    '$set': {'updated_at': datetime.utcnow()}
+                }
+            )
+            
+            if result.modified_count > 0 or result.matched_count > 0:
+                return db.collections.find_one({'_id': ObjectId(collection_id)})
+            return None
+        except:
+            return None
+            
+    @staticmethod
+    def remove_file(collection_id, owner_id, file_id):
+        """
+        Remove a file from a collection
+        
+        Args:
+            collection_id (str): ID of the collection
+            owner_id (str): ID of the user owning this collection
+            file_id (str): ID of the file to remove
+            
+        Returns:
+            dict: The updated collection or None if not found
+        """
+        try:
+            result = db.collections.update_one(
+                {
+                    '_id': ObjectId(collection_id),
+                    'owner_id': owner_id
+                },
+                {
+                    '$pull': {'files': file_id},
+                    '$set': {'updated_at': datetime.utcnow()}
+                }
+            )
+            
+            if result.matched_count > 0:
+                return db.collections.find_one({'_id': ObjectId(collection_id)})
+            return None
+        except:
+            return None
+            
+    @staticmethod
+    def get_files(collection_id, owner_id):
+        """
+        Get all files in a collection
+        
+        Args:
+            collection_id (str): ID of the collection
+            owner_id (str): ID of the user owning this collection
+            
+        Returns:
+            list: List of file IDs or None if collection not found
+        """
+        try:
+            collection = db.collections.find_one({
+                '_id': ObjectId(collection_id),
+                'owner_id': owner_id
+            })
+            
+            if not collection:
+                return None
+                
+            return collection.get('files', [])
+        except:
+            return None 

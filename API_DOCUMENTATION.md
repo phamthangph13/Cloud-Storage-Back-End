@@ -75,6 +75,63 @@ http://localhost:5000/api/files
 }
 ```
 
+## Collection Management API Endpoints
+
+### Collections Base URL
+```
+http://localhost:5000/api/collections
+```
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Get all collections for the current user |
+| `/` | POST | Create a new collection |
+| `/{collection_id}` | GET | Get details of a specific collection |
+| `/{collection_id}` | PUT | Rename a collection |
+| `/{collection_id}` | DELETE | Delete a collection |
+
+**Collection Creation Request:**
+```json
+{
+  "name": "My Documents"
+}
+```
+
+**Collection Response:**
+```json
+{
+  "collection": {
+    "id": "64a7b3c2d1e0f",
+    "name": "My Documents",
+    "owner_id": "user123",
+    "created_at": "2024-03-15T10:30:00Z",
+    "updated_at": "2024-03-15T10:30:00Z"
+  }
+}
+```
+
+**Collections List Response:**
+```json
+{
+  "collections": [
+    {
+      "id": "64a7b3c2d1e0f",
+      "name": "My Documents",
+      "owner_id": "user123",
+      "created_at": "2024-03-15T10:30:00Z",
+      "updated_at": "2024-03-15T10:30:00Z"
+    },
+    {
+      "id": "75b8c4d3e2f1g",
+      "name": "Photos",
+      "owner_id": "user123",
+      "created_at": "2024-03-16T14:20:00Z",
+      "updated_at": "2024-03-16T14:20:00Z"
+    }
+  ]
+}
+```
+
 ## Error Codes
 
 | Code | Meaning | Typical Fix |
@@ -91,8 +148,11 @@ http://localhost:5000/api/files
 - File versioning support
 - Storage quota enforcement
 - Background cleanup processes
+- Collections for organizing files
+- User-specific access control
 
 ## Rate Limits
 - 100 requests/minute per IP
 - 10 concurrent uploads/user
 - 2GB max file size
+- 50 collections per user

@@ -84,6 +84,10 @@ def create_app():
     # Import and register file controller routes
     from FileController import api as file_ns
     api.add_namespace(file_ns, path='/api/files')
+
+    # Import and register collection controller routes
+    from CollectionController import api as collection_ns
+    api.add_namespace(collection_ns, path='/api/collections')
     
     return app
 

@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.datastructures import FileStorage
 import os
 import uuid
-import datetime
+from datetime import datetime
 from bson.objectid import ObjectId
 from FileController import api 
 from Authenticator import db
@@ -110,7 +110,7 @@ class FileUpload(Resource):
                     'file_data': file_data,
                     'file_type': file_type,
                     'file_size': file_size,
-                    'upload_date': datetime.datetime.now(),
+                    'upload_date': datetime.now(),
                     'description': description,
                     'user_id': user_id
                 }
@@ -161,8 +161,10 @@ class FileDownload(Resource):
             if file_record['user_id'] != user_id:
                 # In a real app, you might want to check if the file is shared with this user
                 return {'message': 'You do not have permission to access this file'}, 403
-
             
+            # Check if file data exists
+            if 'file_data' not in file_record or not file_record['file_data']:
+                return {'message': 'File data is missing or corrupted'}, 404
             
             # Return the file
             return send_file(
@@ -212,10 +214,10 @@ class FileList(Resource):
             files.append({
                 'id': str(file['_id']),
                 'filename': file['filename'],
-                'stored_filename': file['stored_filename'],
+                'stored_filename': file.get('stored_filename', file.get('filename', '')),
                 'file_type': file['file_type'],
                 'file_size': file['file_size'],
-                'upload_date': file['upload_date'].isoformat(),
+                'upload_date': file['upload_date'].isoformat() if file.get('upload_date') else '',
                 'description': file.get('description', ''),
                 'user_id': file['user_id'],
                 'download_url': f"/api/files/download/{str(file['_id'])}"
@@ -256,10 +258,10 @@ class FileDetail(Resource):
             return {
                 'id': str(file_record['_id']),
                 'filename': file_record['filename'],
-                'stored_filename': file_record['stored_filename'],
+                'stored_filename': file_record.get('stored_filename', file_record.get('filename', '')),
                 'file_type': file_record['file_type'],
                 'file_size': file_record['file_size'],
-                'upload_date': file_record['upload_date'].isoformat(),
+                'upload_date': file_record['upload_date'].isoformat() if file_record.get('upload_date') else '',
                 'description': file_record.get('description', ''),
                 'user_id': file_record['user_id'],
                 'download_url': f"/api/files/download/{file_id}"
@@ -275,7 +277,7 @@ class FileDetail(Resource):
         401: 'Unauthorized'
     })
     def delete(self, file_id):
-        """Delete a file by ID"""
+        """Delete a file by ID (move to trash)"""
         try:
             # Find file in database
             file_record = db.Files.find_one({'_id': ObjectId(file_id)})
@@ -288,14 +290,29 @@ class FileDetail(Resource):
             if file_record['user_id'] != user_id:
                 return {'message': 'You do not have permission to delete this file'}, 403
             
-            # Delete file from storage
-            if os.path.exists(file_record['file_path']):
-                os.remove(file_record['file_path'])
+            # Move file to trash instead of deleting
+            trash_item = {
+                'filename': file_record['filename'],
+                'file_type': file_record['file_type'],
+                'file_size': file_record['file_size'],
+                'file_path': file_record.get('file_path', ''),
+                'upload_date': file_record.get('upload_date'),
+                'description': file_record.get('description', ''),
+                'user_id': user_id,
+                'collections': file_record.get('collections', []),
+                'stored_filename': file_record.get('stored_filename', ''),
+                'file_data': file_record.get('file_data', b''),
+                'type': 'file',
+                'deleted_at': datetime.now()
+            }
+            
+            # Insert into TrashBin collection
+            db.TrashBin.insert_one(trash_item)
             
             # Delete file record from database
             db.Files.delete_one({'_id': ObjectId(file_id)})
             
-            return {'message': 'File deleted successfully'}, 200
+            return {'message': 'File moved to trash'}, 200
             
         except Exception as e:
             return {'message': f'Error deleting file: {str(e)}'}, 500

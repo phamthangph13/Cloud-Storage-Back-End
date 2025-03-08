@@ -200,20 +200,39 @@ class CollectionDetail(Resource):
         401: 'Unauthorized'
     })
     def delete(self, collection_id):
-        """Delete a collection"""
+        """Delete a collection (move to trash)"""
         current_user = get_jwt_identity()
         
         try:
-            # Find and delete the collection
-            result = db.collections.delete_one({
+            # Find the collection first
+            collection = db.collections.find_one({
                 '_id': ObjectId(collection_id),
                 'owner_id': current_user
             })
             
-            if result.deleted_count == 0:
+            if not collection:
                 return {'message': 'Collection not found'}, 404
+                
+            # Move to trash
+            trash_item = {
+                'name': collection['name'],
+                'owner_id': current_user,
+                'created_at': collection.get('created_at'),
+                'updated_at': collection.get('updated_at'),
+                'type': 'collection',
+                'deleted_at': datetime.now()
+            }
             
-            return {'message': 'Collection deleted successfully'}, 200
+            # Insert into TrashBin collection
+            db.TrashBin.insert_one(trash_item)
+            
+            # Delete from collections
+            db.collections.delete_one({
+                '_id': ObjectId(collection_id),
+                'owner_id': current_user
+            })
+            
+            return {'message': 'Collection moved to trash'}, 200
         except Exception as e:
             return {'message': 'Invalid collection ID'}, 400
 

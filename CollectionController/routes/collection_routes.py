@@ -5,7 +5,8 @@ from bson.objectid import ObjectId
 from CollectionController import api
 from Authenticator import db
 from CollectionController.models.collection import Collection
-import datetime
+from datetime import datetime
+from bson.errors import InvalidId
 
 # Collection model for API documentation
 collection_model = api.model('Collection', {
@@ -88,8 +89,8 @@ class CollectionList(Resource):
         collection = {
             'name': data['name'].strip(),
             'owner_id': current_user,
-            'created_at': datetime.datetime.utcnow(),
-            'updated_at': datetime.datetime.utcnow()
+            'created_at': datetime.now(),
+            'updated_at': datetime.now()
         }
         
         # Insert into database
@@ -116,31 +117,37 @@ class CollectionDetail(Resource):
         401: 'Unauthorized'
     })
     def get(self, collection_id):
-        """Get a specific collection by ID"""
+        """Get a specific collection"""
         current_user = get_jwt_identity()
         
         try:
-            # Find the collection by ID and owner
+            # Validate the ObjectId format
+            if not collection_id or len(collection_id) != 24:
+                return {'message': 'Invalid collection ID format. Must be a 24-character hexadecimal string.'}, 400
+                
+            try:
+                # Try to convert to ObjectId to validate it
+                object_id = ObjectId(collection_id)
+            except InvalidId:
+                return {'message': 'Invalid collection ID format. Must be a valid 24-character hexadecimal string.'}, 400
+                
+            # Find the collection
             collection = db.collections.find_one({
-                '_id': ObjectId(collection_id),
+                '_id': object_id,
                 'owner_id': current_user
             })
             
             if not collection:
                 return {'message': 'Collection not found'}, 404
+                
+            # Convert ObjectId to string for JSON serialization
+            collection['id'] = str(collection['_id'])
+            del collection['_id']
             
-            # Format and return the collection
-            return {
-                'collection': {
-                    'id': str(collection['_id']),
-                    'name': collection['name'],
-                    'owner_id': collection['owner_id'],
-                    'created_at': collection['created_at'],
-                    'updated_at': collection['updated_at']
-                }
-            }, 200
+            return collection, 200
         except Exception as e:
-            return {'message': 'Invalid collection ID'}, 400
+            print(f"Error getting collection: {str(e)}")
+            return {'message': 'An error occurred while processing your request'}, 500
     
     @jwt_required()
     @api.expect(collection_update_model)
@@ -151,47 +158,62 @@ class CollectionDetail(Resource):
         401: 'Unauthorized'
     })
     def put(self, collection_id):
-        """Update a collection name"""
+        """Update a collection"""
         current_user = get_jwt_identity()
         data = request.json
         
-        # Validate input
-        if not data or 'name' not in data or not data['name'].strip():
-            return {'message': 'Collection name is required'}, 400
-        
         try:
-            # Find and update the collection
-            result = db.collections.update_one(
-                {
-                    '_id': ObjectId(collection_id),
-                    'owner_id': current_user
-                },
-                {
-                    '$set': {
-                        'name': data['name'].strip(),
-                        'updated_at': datetime.datetime.utcnow()
-                    }
-                }
+            # Validate the ObjectId format
+            if not collection_id or len(collection_id) != 24:
+                return {'message': 'Invalid collection ID format. Must be a 24-character hexadecimal string.'}, 400
+                
+            try:
+                # Try to convert to ObjectId to validate it
+                object_id = ObjectId(collection_id)
+            except InvalidId:
+                return {'message': 'Invalid collection ID format. Must be a valid 24-character hexadecimal string.'}, 400
+                
+            # Validate input
+            if not data or 'name' not in data or not data['name'].strip():
+                return {'message': 'Collection name is required'}, 400
+                
+            # Find the collection
+            collection = db.collections.find_one({
+                '_id': object_id,
+                'owner_id': current_user
+            })
+            
+            if not collection:
+                return {'message': 'Collection not found'}, 404
+                
+            # Update collection
+            update_data = {
+                'name': data['name'].strip(),
+                'updated_at': datetime.now()
+            }
+            
+            db.collections.update_one(
+                {'_id': object_id, 'owner_id': current_user},
+                {'$set': update_data}
             )
             
-            if result.matched_count == 0:
-                return {'message': 'Collection not found'}, 404
+            # Get updated collection
+            updated_collection = db.collections.find_one({
+                '_id': object_id,
+                'owner_id': current_user
+            })
             
-            # Get the updated collection
-            updated_collection = db.collections.find_one({'_id': ObjectId(collection_id)})
+            # Convert ObjectId to string for JSON serialization
+            updated_collection['id'] = str(updated_collection['_id'])
+            del updated_collection['_id']
             
             return {
                 'message': 'Collection updated successfully',
-                'collection': {
-                    'id': str(updated_collection['_id']),
-                    'name': updated_collection['name'],
-                    'owner_id': updated_collection['owner_id'],
-                    'created_at': updated_collection['created_at'],
-                    'updated_at': updated_collection['updated_at']
-                }
+                'collection': updated_collection
             }, 200
         except Exception as e:
-            return {'message': 'Invalid collection ID'}, 400
+            print(f"Error updating collection: {str(e)}")
+            return {'message': 'An error occurred while processing your request'}, 500
     
     @jwt_required()
     @api.doc(responses={
@@ -204,9 +226,19 @@ class CollectionDetail(Resource):
         current_user = get_jwt_identity()
         
         try:
+            # Validate the ObjectId format
+            if not collection_id or len(collection_id) != 24:
+                return {'message': 'Invalid collection ID format. Must be a 24-character hexadecimal string.'}, 400
+                
+            try:
+                # Try to convert to ObjectId to validate it
+                object_id = ObjectId(collection_id)
+            except InvalidId:
+                return {'message': 'Invalid collection ID format. Must be a valid 24-character hexadecimal string.'}, 400
+                
             # Find the collection first
             collection = db.collections.find_one({
-                '_id': ObjectId(collection_id),
+                '_id': object_id,
                 'owner_id': current_user
             })
             
@@ -216,6 +248,7 @@ class CollectionDetail(Resource):
             # Move to trash
             trash_item = {
                 'name': collection['name'],
+                'user_id': current_user,
                 'owner_id': current_user,
                 'created_at': collection.get('created_at'),
                 'updated_at': collection.get('updated_at'),
@@ -228,13 +261,14 @@ class CollectionDetail(Resource):
             
             # Delete from collections
             db.collections.delete_one({
-                '_id': ObjectId(collection_id),
+                '_id': object_id,
                 'owner_id': current_user
             })
             
             return {'message': 'Collection moved to trash'}, 200
         except Exception as e:
-            return {'message': 'Invalid collection ID'}, 400
+            print(f"Error deleting collection: {str(e)}")
+            return {'message': 'An error occurred while processing your request'}, 500
 
 @api.route('/<string:collection_id>/files')
 class CollectionFiles(Resource):

@@ -71,6 +71,27 @@ Verify a user's email address using the token sent to their email.
 **Possible Errors:**
 - 400 Bad Request: Invalid or expired token
 
+### Verify Email Link
+
+```
+GET /auth/verify-email-link?token={token}
+```
+
+Alternative endpoint to verify a user's email address via a direct link.
+
+**Parameters:**
+- `token` (query string): The verification token from the email
+
+**Response (200 OK):**
+```json
+{
+  "message": "Email verified successfully"
+}
+```
+
+**Possible Errors:**
+- 400 Bad Request: Invalid or expired token
+
 ### Login
 
 ```
@@ -489,6 +510,8 @@ DELETE /collections/{collection_id}
 
 Move a specific collection to trash.
 
+**Important Note**: The collection_id must be a valid MongoDB ObjectID (24 hexadecimal characters). If the provided ID doesn't match this format or is not valid, the server will return a 400 error with the message "Invalid collection ID".
+
 **Response (200 OK):**
 ```json
 {
@@ -497,6 +520,7 @@ Move a specific collection to trash.
 ```
 
 **Possible Errors:**
+- 400 Bad Request: Invalid collection ID format or validation failed
 - 401 Unauthorized: Not authenticated
 - 404 Not Found: Collection not found
 
@@ -628,3 +652,17 @@ Permanently delete an item from trash.
 **Possible Errors:**
 - 401 Unauthorized: Not authenticated
 - 404 Not Found: Item not found in trash
+
+## Troubleshooting Common Issues
+
+### "Invalid collection ID" Error
+
+When you receive a 400 error with the message "Invalid collection ID" while trying to perform operations on a collection, it typically means one of the following:
+
+1. The collection ID format is not a valid MongoDB ObjectID (should be a 24-character hexadecimal string)
+2. The ObjectID validation in the server is failing on your provided ID
+
+To resolve this issue:
+- Verify that the collection ID is a valid 24-character hexadecimal string
+- Check that the collection exists in your database
+- Ensure you have permission to access the specified collection

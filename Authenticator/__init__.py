@@ -116,9 +116,9 @@ def create_app():
     from CollectionController import api as collection_ns
     api.add_namespace(collection_ns, path='/api/collections')
     
-    # Import and register restore controller routes
-    from RestoreController import api as restore_ns
-    api.add_namespace(restore_ns, path='/api/restore')
+    # Import and register restore controller routes using blueprint
+    from RestoreController import restore_bp
+    app.register_blueprint(restore_bp)
     
     # Register trash routes
     from RestoreController.routes.restore_routes import api as trash_ns

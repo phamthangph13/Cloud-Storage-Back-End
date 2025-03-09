@@ -252,8 +252,10 @@ class CollectionDetail(Resource):
                 'owner_id': current_user,
                 'created_at': collection.get('created_at'),
                 'updated_at': collection.get('updated_at'),
+                'files': collection.get('files', []),
                 'type': 'collection',
-                'deleted_at': datetime.now()
+                'deleted_at': datetime.now(),
+                'original_id': str(object_id)
             }
             
             # Insert into TrashBin collection

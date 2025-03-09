@@ -303,7 +303,8 @@ class FileDetail(Resource):
                 'stored_filename': file_record.get('stored_filename', ''),
                 'file_data': file_record.get('file_data', b''),
                 'type': 'file',
-                'deleted_at': datetime.now()
+                'deleted_at': datetime.now(),
+                'original_id': str(file_id)  # Lưu ID gốc của file
             }
             
             # Insert into TrashBin collection

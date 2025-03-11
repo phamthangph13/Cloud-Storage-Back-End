@@ -27,6 +27,11 @@ collection_update_model = api.model('CollectionUpdate', {
     'name': fields.String(required=True, description='New collection name')
 })
 
+# Collection rename model
+collection_rename_model = api.model('CollectionRename', {
+    'new_name': fields.String(required=True, description='New name for the collection')
+})
+
 # Collection files model for API documentation
 collection_files_model = api.model('CollectionFiles', {
     'collection_id': fields.String(description='Collection ID'),
@@ -333,4 +338,72 @@ class CollectionFiles(Resource):
             }, 200
             
         except Exception as e:
-            return {'message': f'Error retrieving files: {str(e)}'}, 400 
+            return {'message': f'Error retrieving files: {str(e)}'}, 400
+
+@api.route('/<string:collection_id>/rename')
+class CollectionRename(Resource):
+    @jwt_required()
+    @api.expect(collection_rename_model)
+    @api.doc(responses={
+        200: 'Collection renamed successfully',
+        400: 'Invalid input or collection ID',
+        404: 'Collection not found',
+        401: 'Unauthorized'
+    })
+    def put(self, collection_id):
+        """Rename a collection"""
+        current_user = get_jwt_identity()
+        data = request.json
+        
+        try:
+            # Validate the ObjectId format
+            if not collection_id or len(collection_id) != 24:
+                return {'message': 'Invalid collection ID format. Must be a 24-character hexadecimal string.'}, 400
+                
+            try:
+                # Try to convert to ObjectId to validate it
+                object_id = ObjectId(collection_id)
+            except InvalidId:
+                return {'message': 'Invalid collection ID format. Must be a valid 24-character hexadecimal string.'}, 400
+                
+            # Validate input
+            if not data or 'new_name' not in data or not data['new_name'].strip():
+                return {'message': 'New collection name is required'}, 400
+                
+            # Find the collection
+            collection = db.collections.find_one({
+                '_id': object_id,
+                'owner_id': current_user
+            })
+            
+            if not collection:
+                return {'message': 'Collection not found'}, 404
+                
+            # Update collection with new name
+            update_data = {
+                'name': data['new_name'].strip(),
+                'updated_at': datetime.now()
+            }
+            
+            db.collections.update_one(
+                {'_id': object_id, 'owner_id': current_user},
+                {'$set': update_data}
+            )
+            
+            # Get updated collection
+            updated_collection = db.collections.find_one({'_id': object_id})
+            
+            return {
+                'message': 'Collection renamed successfully',
+                'collection': {
+                    'id': str(updated_collection['_id']),
+                    'name': updated_collection['name'],
+                    'owner_id': updated_collection['owner_id'],
+                    'created_at': updated_collection['created_at'],
+                    'updated_at': updated_collection['updated_at']
+                }
+            }, 200
+        
+        except Exception as e:
+            print(f"Error renaming collection: {str(e)}")
+            return {'message': 'An error occurred while processing your request'}, 500 

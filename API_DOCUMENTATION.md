@@ -312,6 +312,60 @@ Get details about a specific file.
 - 401 Unauthorized: Not authenticated
 - 404 Not Found: File not found
 
+### Rename File
+
+```
+PUT /files/files/{file_id}
+```
+
+Rename a specific file.
+
+**Request Body:**
+```json
+{
+  "new_filename": "new_file_name.jpg",
+  "force": false
+}
+```
+- `new_filename`: Tên mới cho file
+- `force` (optional): Nếu là `true`, hệ thống sẽ tự động sử dụng tên gợi ý nếu tên file bị trùng
+
+**Response (200 OK):**
+```json
+{
+  "message": "File renamed successfully",
+  "file": {
+    "id": "file-id-1",
+    "filename": "new_file_name.jpg",
+    "file_type": "image",
+    "file_size": 1024,
+    "upload_date": "2023-01-01T12:00:00",
+    "description": "Example image",
+    "download_url": "/api/files/download/file-id-1"
+  }
+}
+```
+
+**Response (409 Conflict):** (Khi tên file đã tồn tại)
+```json
+{
+  "message": "A file with this name already exists",
+  "suggestion": "new_file_name(1).jpg",
+  "requires_confirmation": true
+}
+```
+Khi nhận được phản hồi này, bạn có thể:
+1. Gửi lại request với tên được gợi ý
+2. Gửi lại request với tham số `force: true` để tự động sử dụng tên gợi ý
+3. Gửi lại request với tên khác
+
+**Possible Errors:**
+- 400 Bad Request: Invalid filename
+- 401 Unauthorized: Not authenticated
+- 403 Forbidden: Permission denied
+- 404 Not Found: File not found
+- 409 Conflict: File with same name already exists
+
 ### Delete File (Move to Trash)
 
 ```
@@ -482,7 +536,6 @@ Update a collection's details.
   "name": "Updated Collection Name"
 }
 ```
-
 **Response (200 OK):**
 ```json
 {
@@ -499,6 +552,40 @@ Update a collection's details.
 
 **Possible Errors:**
 - 400 Bad Request: Invalid input
+- 401 Unauthorized: Not authenticated
+- 404 Not Found: Collection not found
+
+### Rename Collection
+
+```
+PUT /collections/{collection_id}/rename
+```
+
+Rename a specific collection.
+
+**Request Body:**
+```json
+{
+  "new_name": "New Collection Name"
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "message": "Collection renamed successfully",
+  "collection": {
+    "id": "collection-id-1",
+    "name": "New Collection Name",
+    "owner_id": "user-id",
+    "created_at": "2023-01-01T12:00:00",
+    "updated_at": "2023-01-03T12:00:00"
+  }
+}
+```
+
+**Possible Errors:**
+- 400 Bad Request: Invalid input or collection ID
 - 401 Unauthorized: Not authenticated
 - 404 Not Found: Collection not found
 
@@ -666,3 +753,4 @@ To resolve this issue:
 - Verify that the collection ID is a valid 24-character hexadecimal string
 - Check that the collection exists in your database
 - Ensure you have permission to access the specified collection
+

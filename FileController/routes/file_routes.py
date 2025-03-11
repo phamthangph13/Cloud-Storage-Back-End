@@ -11,6 +11,7 @@ from FileController import api
 from Authenticator import db
 from io import BytesIO 
 from CollectionController.models.collection import Collection
+import re
 
 # Remove filesystem storage related code
 
@@ -18,6 +19,11 @@ from CollectionController.models.collection import Collection
 IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'}
 VIDEO_EXTENSIONS = {'mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm'}
 DOCUMENT_EXTENSIONS = {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'json', 'xml'}
+
+# File rename model
+file_rename_model = api.model('FileRename', {
+    'new_filename': fields.String(required=True, description='New filename for the file')
+})
 
 # Helper function to determine file type
 def get_file_type(filename):
@@ -269,6 +275,140 @@ class FileDetail(Resource):
             
         except Exception as e:
             return {'message': f'Error retrieving file details: {str(e)}'}, 500
+    
+    @jwt_required()
+    @api.expect(file_rename_model)
+    @api.doc(responses={
+        200: 'File renamed successfully',
+        400: 'Invalid filename',
+        404: 'File not found',
+        401: 'Unauthorized',
+        403: 'Permission denied'
+    })
+    def put(self, file_id):
+        """Rename a file by ID"""
+        try:
+            data = request.json
+            
+            # Validate input
+            if not data or 'new_filename' not in data or not data['new_filename'].strip():
+                return {'message': 'New filename is required'}, 400
+            
+            new_filename = secure_filename(data['new_filename'].strip())
+            
+            # Check if filename is valid
+            if not new_filename:
+                return {'message': 'Invalid filename'}, 400
+            
+            # Find file in database
+            file_record = db.Files.find_one({'_id': ObjectId(file_id)})
+            
+            if not file_record:
+                return {'message': 'File not found'}, 404
+            
+            # Check if user has access to this file
+            user_id = get_jwt_identity()
+            if file_record['user_id'] != user_id:
+                return {'message': 'You do not have permission to modify this file'}, 403
+            
+            # Get file extension from original filename
+            old_filename = file_record['filename']
+            if '.' in old_filename:
+                extension = old_filename.rsplit('.', 1)[1].lower()
+                
+                # Make sure new filename has extension
+                if '.' not in new_filename:
+                    new_filename = f"{new_filename}.{extension}"
+            
+            # Check if file with the same name already exists for this user
+            name_without_ext = new_filename
+            ext = ""
+            if '.' in new_filename:
+                name_without_ext, ext = new_filename.rsplit('.', 1)
+                ext = f".{ext}"
+            
+            # Find if there are any files with the same name (excluding current file)
+            existing_files = list(db.Files.find({
+                '_id': {'$ne': ObjectId(file_id)},
+                'user_id': user_id,
+                'filename': new_filename
+            }))
+            
+            # If a file with the same name exists, suggest a new name
+            if existing_files:
+                # Count files with similar names (e.g. name(1).ext, name(2).ext)
+                similar_files = list(db.Files.find({
+                    '_id': {'$ne': ObjectId(file_id)},
+                    'user_id': user_id,
+                    'filename': {'$regex': f"^{re.escape(name_without_ext)}\\(\\d+\\){re.escape(ext)}$"}
+                }))
+                
+                # Calculate the next number
+                highest_num = 0
+                for file in similar_files:
+                    filename = file['filename']
+                    match = re.search(r'\((\d+)\)', filename)
+                    if match:
+                        num = int(match.group(1))
+                        if num > highest_num:
+                            highest_num = num
+                
+                # Generate suggestion with the next number
+                suggested_name = f"{name_without_ext}({highest_num + 1}){ext}"
+                
+                # If the force flag is set, use the suggested name, otherwise return a suggestion
+                if data.get('force', False):
+                    new_filename = suggested_name
+                else:
+                    return {
+                        'message': 'A file with this name already exists',
+                        'suggestion': suggested_name,
+                        'requires_confirmation': True
+                    }, 409
+            
+            # Update stored_filename if it exists
+            if 'stored_filename' in file_record:
+                old_stored = file_record['stored_filename']
+                if '_' in old_stored:
+                    prefix = old_stored.split('_', 1)[0]
+                    new_stored_filename = f"{prefix}_{new_filename}"
+                else:
+                    # If stored_filename doesn't have UUID prefix
+                    new_stored_filename = f"{uuid.uuid4()}_{new_filename}"
+                
+                # Update to new stored filename
+                db.Files.update_one(
+                    {'_id': ObjectId(file_id)},
+                    {'$set': {'stored_filename': new_stored_filename}}
+                )
+            
+            # Update filename
+            db.Files.update_one(
+                {'_id': ObjectId(file_id)},
+                {'$set': {'filename': new_filename}}
+            )
+            
+            # Get updated file
+            updated_file = db.Files.find_one({'_id': ObjectId(file_id)})
+            
+            # Return updated file details
+            return {
+                'message': 'File renamed successfully',
+                'file': {
+                    'id': str(updated_file['_id']),
+                    'filename': updated_file['filename'],
+                    'stored_filename': updated_file.get('stored_filename', updated_file.get('filename', '')),
+                    'file_type': updated_file['file_type'],
+                    'file_size': updated_file['file_size'],
+                    'upload_date': updated_file['upload_date'].isoformat() if updated_file.get('upload_date') else '',
+                    'description': updated_file.get('description', ''),
+                    'user_id': updated_file['user_id'],
+                    'download_url': f"/api/files/download/{file_id}"
+                }
+            }, 200
+            
+        except Exception as e:
+            return {'message': f'Error renaming file: {str(e)}'}, 500
     
     @jwt_required()
     @api.doc(responses={

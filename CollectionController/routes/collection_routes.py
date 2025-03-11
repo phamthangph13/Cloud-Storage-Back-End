@@ -29,7 +29,8 @@ collection_update_model = api.model('CollectionUpdate', {
 
 # Collection rename model
 collection_rename_model = api.model('CollectionRename', {
-    'new_name': fields.String(required=True, description='New name for the collection')
+    'new_name': fields.String(required=True, description='New name for the collection'),
+    'force': fields.Boolean(required=False, description='Force rename with suggested name if conflict exists')
 })
 
 # Collection files model for API documentation
@@ -348,7 +349,8 @@ class CollectionRename(Resource):
         200: 'Collection renamed successfully',
         400: 'Invalid input or collection ID',
         404: 'Collection not found',
-        401: 'Unauthorized'
+        401: 'Unauthorized',
+        409: 'Collection with same name already exists'
     })
     def put(self, collection_id):
         """Rename a collection"""
@@ -379,9 +381,51 @@ class CollectionRename(Resource):
             if not collection:
                 return {'message': 'Collection not found'}, 404
                 
+            new_name = data['new_name'].strip()
+            
+            # Check if collection with the same name already exists for this user
+            existing_collections = list(db.collections.find({
+                '_id': {'$ne': object_id},
+                'owner_id': current_user,
+                'name': new_name
+            }))
+            
+            # If a collection with the same name exists, suggest a new name
+            if existing_collections:
+                # Count collections with similar names (e.g. name(1), name(2))
+                import re
+                similar_collections = list(db.collections.find({
+                    '_id': {'$ne': object_id},
+                    'owner_id': current_user,
+                    'name': {'$regex': f"^{re.escape(new_name)}\\(\\d+\\)$"}
+                }))
+                
+                # Calculate the next number
+                highest_num = 0
+                for coll in similar_collections:
+                    coll_name = coll['name']
+                    match = re.search(r'\((\d+)\)', coll_name)
+                    if match:
+                        num = int(match.group(1))
+                        if num > highest_num:
+                            highest_num = num
+                
+                # Generate suggestion with the next number
+                suggested_name = f"{new_name}({highest_num + 1})"
+                
+                # If the force flag is set, use the suggested name, otherwise return a suggestion
+                if data.get('force', False):
+                    new_name = suggested_name
+                else:
+                    return {
+                        'message': 'A collection with this name already exists',
+                        'suggestion': suggested_name,
+                        'requires_confirmation': True
+                    }, 409
+            
             # Update collection with new name
             update_data = {
-                'name': data['new_name'].strip(),
+                'name': new_name,
                 'updated_at': datetime.now()
             }
             

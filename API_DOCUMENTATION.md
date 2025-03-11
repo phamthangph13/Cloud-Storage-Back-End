@@ -566,9 +566,12 @@ Rename a specific collection.
 **Request Body:**
 ```json
 {
-  "new_name": "New Collection Name"
+  "new_name": "New Collection Name",
+  "force": false
 }
 ```
+- `new_name`: Tên mới cho collection
+- `force` (optional): Nếu là `true`, hệ thống sẽ tự động sử dụng tên gợi ý nếu tên collection bị trùng
 
 **Response (200 OK):**
 ```json
@@ -584,10 +587,24 @@ Rename a specific collection.
 }
 ```
 
+**Response (409 Conflict):** (Khi tên collection đã tồn tại)
+```json
+{
+  "message": "A collection with this name already exists",
+  "suggestion": "New Collection Name(1)",
+  "requires_confirmation": true
+}
+```
+Khi nhận được phản hồi này, bạn có thể:
+1. Gửi lại request với tên được gợi ý
+2. Gửi lại request với tham số `force: true` để tự động sử dụng tên gợi ý
+3. Gửi lại request với tên khác
+
 **Possible Errors:**
 - 400 Bad Request: Invalid input or collection ID
 - 401 Unauthorized: Not authenticated
 - 404 Not Found: Collection not found
+- 409 Conflict: Collection with same name already exists
 
 ### Delete Collection (Move to Trash)
 

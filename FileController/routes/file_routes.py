@@ -95,8 +95,46 @@ class FileUpload(Resource):
                 # Determine file type and storage location
                 file_type = get_file_type(original_filename)
                 
-                # Generate a unique filename
+                # Get user ID from JWT token
+                user_id = get_jwt_identity()
+                
+                # Check if file with the same name already exists for this user
+                name_without_ext = original_filename
+                ext = ""
+                if '.' in original_filename:
+                    name_without_ext, ext = original_filename.rsplit('.', 1)
+                    ext = f".{ext}"
+                
+                # Find if there are any files with the same name
+                existing_files = list(db.Files.find({
+                    'user_id': user_id,
+                    'filename': original_filename
+                }))
+                
+                # If a file with the same name exists, generate a new name
+                if existing_files:
+                    # Count files with similar names (e.g. name(1).ext, name(2).ext)
+                    similar_files = list(db.Files.find({
+                        'user_id': user_id,
+                        'filename': {'$regex': f"^{re.escape(name_without_ext)}\\(\\d+\\){re.escape(ext)}$"}
+                    }))
+                    
+                    # Calculate the next number
+                    highest_num = 0
+                    for file in similar_files:
+                        filename = file['filename']
+                        match = re.search(r'\((\d+)\)', filename)
+                        if match:
+                            num = int(match.group(1))
+                            if num > highest_num:
+                                highest_num = num
+                    
+                    # Generate a new filename with the next number
+                    original_filename = f"{name_without_ext}({highest_num + 1}){ext}"
+                
+                # Generate a unique filename for storage
                 unique_filename = f"{uuid.uuid4()}_{original_filename}"
+                
                 # Read file content as binary
                 file_data = uploaded_file.read()
                 if len(file_data) == 0:
@@ -105,9 +143,6 @@ class FileUpload(Resource):
                 
                 # Get file size from content length
                 file_size = len(file_data)
-                
-                # Get user ID from JWT token
-                user_id = get_jwt_identity()
                 
                 # Create file record in database
                 file_record = {

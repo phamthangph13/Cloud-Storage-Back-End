@@ -250,6 +250,75 @@ Download a specific file by ID.
 - 401 Unauthorized: Not authenticated
 - 404 Not Found: File not found
 
+### Mobile Download
+
+```
+GET /files/mobile-download/{file_id}
+```
+
+Download a file optimized for mobile devices. This endpoint provides improved handling of content types, streaming, and mobile-friendly response headers.
+
+**Response:**
+- The file content with appropriate Content-Type header based on the file type
+- Headers optimized for mobile devices
+- Support for range requests (partial downloads)
+
+**Possible Errors:**
+- 401 Unauthorized: Not authenticated
+- 403 Permission denied: No access to this file
+- 404 Not Found: File not found
+
+### Public Download
+
+```
+GET /files/public-download/{file_id}/{access_token}
+```
+
+Download a file using a public access token. This endpoint does not require authentication and is ideal for shared files.
+
+**Parameters:**
+- `file_id`: The ID of the file
+- `access_token`: The access token generated when sharing the file
+
+**Response:**
+- The file content with appropriate Content-Type header
+
+**Possible Errors:**
+- 403 Invalid or expired access token
+- 404 Not Found: File not found
+
+### Share File
+
+```
+POST /files/files/{file_id}/share
+```
+
+Generate a shareable public link for a file.
+
+**Request Body:**
+```json
+{
+  "expiration_days": 7
+}
+```
+- `expiration_days` (optional): Number of days until the link expires (default: 7)
+
+**Response (200 OK):**
+```json
+{
+  "message": "File shared successfully",
+  "public_url": "http://example.com/api/files/public-download/file-id-1/access-token",
+  "expiration_date": "2023-01-08T12:00:00",
+  "file_id": "file-id-1",
+  "file_name": "example.jpg"
+}
+```
+
+**Possible Errors:**
+- 401 Unauthorized: Not authenticated
+- 403 Permission denied: No access to this file
+- 404 Not Found: File not found
+
 ### List Files
 
 ```

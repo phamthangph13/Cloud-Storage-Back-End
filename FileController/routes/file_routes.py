@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.datastructures import FileStorage
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson.objectid import ObjectId
 from FileController import api 
 from Authenticator import db
@@ -19,6 +19,38 @@ import re
 IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'}
 VIDEO_EXTENSIONS = {'mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm'}
 DOCUMENT_EXTENSIONS = {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'json', 'xml'}
+
+# MIME type mapping to provide more accurate content types for files
+MIME_TYPES = {
+    # Images
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'bmp': 'image/bmp',
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml',
+    # Videos
+    'mp4': 'video/mp4',
+    'avi': 'video/x-msvideo',
+    'mov': 'video/quicktime',
+    'wmv': 'video/x-ms-wmv',
+    'flv': 'video/x-flv',
+    'mkv': 'video/x-matroska',
+    'webm': 'video/webm',
+    # Documents
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xls': 'application/vnd.ms-excel',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'txt': 'text/plain',
+    'csv': 'text/csv',
+    'json': 'application/json',
+    'xml': 'application/xml',
+}
 
 # File rename model
 file_rename_model = api.model('FileRename', {
@@ -37,6 +69,12 @@ def get_file_type(filename):
         return 'document'
     else:
         return 'other'
+
+# Helper function to get MIME type
+def get_mime_type(filename):
+    """Get the MIME type based on file extension"""
+    extension = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+    return MIME_TYPES.get(extension, 'application/octet-stream')
 
 # File upload parser
 upload_parser = api.parser()
@@ -65,6 +103,11 @@ file_list_model = api.model('FileList', {
 # Add to collection request model
 add_to_collection_model = api.model('AddToCollection', {
     'collection_id': fields.String(required=True, description='ID of the collection to add the file to')
+})
+
+# Share file model
+share_file_model = api.model('ShareFile', {
+    'expiration_days': fields.Integer(required=False, default=7, description='Number of days until link expires')
 })
 
 @api.route('/upload')
@@ -215,6 +258,126 @@ class FileDownload(Resource):
                 mimetype='application/octet-stream'
             )
             
+            
+        except Exception as e:
+            return {'message': f'Error downloading file: {str(e)}'}, 500
+
+@api.route('/mobile-download/<string:file_id>')
+class MobileFileDownload(Resource):
+    @jwt_required()
+    @api.doc(responses={
+        200: 'File downloaded successfully',
+        404: 'File not found',
+        401: 'Unauthorized',
+        403: 'Permission denied'
+    })
+    def get(self, file_id):
+        """Download a file optimized for mobile devices"""
+        try:
+            # Find file in database
+            file_record = db.Files.find_one({'_id': ObjectId(file_id)})
+            
+            if not file_record:
+                return {'message': 'File not found'}, 404
+            
+            # Check if user has access to this file
+            user_id = get_jwt_identity()
+            if file_record['user_id'] != user_id:
+                # Check if the file is shared or public (if you implement sharing feature)
+                # For now, just return permission denied
+                return {'message': 'You do not have permission to access this file'}, 403
+            
+            # Check if file data exists
+            if 'file_data' not in file_record or not file_record['file_data']:
+                return {'message': 'File data is missing or corrupted'}, 404
+            
+            filename = file_record['filename']
+            
+            # Determine the appropriate MIME type for better mobile handling
+            mime_type = get_mime_type(filename)
+            
+            # Streaming response for efficient transfer to mobile devices
+            file_stream = BytesIO(file_record['file_data'])
+            
+            # Set appropriate headers for mobile download
+            response = send_file(
+                file_stream,
+                as_attachment=True,
+                download_name=filename,
+                mimetype=mime_type,
+                conditional=True  # Support for conditional GET requests
+            )
+            
+            # Add headers to improve mobile download experience
+            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response.headers['Content-Length'] = str(file_record['file_size'])
+            response.headers['Accept-Ranges'] = 'bytes'  # Support for range requests
+            
+            # Mobile cache control - allow caching on device but revalidate
+            response.headers['Cache-Control'] = 'private, max-age=3600'
+            
+            return response
+            
+        except Exception as e:
+            return {'message': f'Error downloading file: {str(e)}'}, 500
+
+@api.route('/public-download/<string:file_id>/<string:access_token>')
+class PublicFileDownload(Resource):
+    @api.doc(responses={
+        200: 'File downloaded successfully',
+        404: 'File not found',
+        403: 'Invalid or expired access token'
+    })
+    def get(self, file_id, access_token):
+        """Download a file using a public access token (no authentication required)"""
+        try:
+            # Find file in database
+            file_record = db.Files.find_one({'_id': ObjectId(file_id)})
+            
+            if not file_record:
+                return {'message': 'File not found'}, 404
+            
+            # Check if the file has a valid access token
+            stored_token = file_record.get('public_access_token', None)
+            if not stored_token or stored_token != access_token:
+                return {'message': 'Invalid access token'}, 403
+            
+            # Check if token has expired
+            expiration_date = file_record.get('token_expiration', None)
+            if expiration_date and expiration_date < datetime.now():
+                return {'message': 'This sharing link has expired'}, 403
+            
+            # Check if file data exists
+            if 'file_data' not in file_record or not file_record['file_data']:
+                return {'message': 'File data is missing or corrupted'}, 404
+            
+            filename = file_record['filename']
+            
+            # Determine the appropriate MIME type
+            mime_type = get_mime_type(filename)
+            
+            # Set up file stream
+            file_stream = BytesIO(file_record['file_data'])
+            
+            # Set appropriate headers for download
+            response = send_file(
+                file_stream,
+                as_attachment=True,
+                download_name=filename,
+                mimetype=mime_type,
+                conditional=True
+            )
+            
+            # Add headers to improve mobile download experience
+            response.headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response.headers['Content-Length'] = str(file_record['file_size'])
+            response.headers['Accept-Ranges'] = 'bytes'
+            response.headers['Cache-Control'] = 'public, max-age=86400'  # Cache for 24 hours
+            
+            # Log the download for analytics (optional)
+            # You might want to implement download tracking here
+            
+            return response
             
         except Exception as e:
             return {'message': f'Error downloading file: {str(e)}'}, 500
@@ -581,3 +744,61 @@ class RemoveFileFromCollection(Resource):
             }, 200
         except Exception as e:
             return {'message': f'Error removing file from collection: {str(e)}'}, 400
+
+@api.route('/files/<string:file_id>/share')
+class ShareFile(Resource):
+    @jwt_required()
+    @api.expect(share_file_model)
+    @api.doc(responses={
+        200: 'File shared successfully',
+        404: 'File not found',
+        401: 'Unauthorized',
+        403: 'Permission denied'
+    })
+    def post(self, file_id):
+        """Generate a shareable public link for a file"""
+        try:
+            data = request.json or {}
+            expiration_days = data.get('expiration_days', 7)  # Default 7 days
+            
+            # Find file in database
+            file_record = db.Files.find_one({'_id': ObjectId(file_id)})
+            
+            if not file_record:
+                return {'message': 'File not found'}, 404
+            
+            # Check if user has access to this file
+            user_id = get_jwt_identity()
+            if file_record['user_id'] != user_id:
+                return {'message': 'You do not have permission to share this file'}, 403
+            
+            # Generate a unique access token
+            access_token = str(uuid.uuid4())
+            
+            # Calculate expiration date
+            expiration_date = datetime.now() + timedelta(days=expiration_days)
+            
+            # Update the file record with the access token and expiration
+            db.Files.update_one(
+                {'_id': ObjectId(file_id)},
+                {'$set': {
+                    'public_access_token': access_token,
+                    'token_expiration': expiration_date,
+                    'last_modified': datetime.now()
+                }}
+            )
+            
+            # Generate the public download URL
+            base_url = request.host_url.rstrip('/')
+            public_url = f"{base_url}/api/files/public-download/{file_id}/{access_token}"
+            
+            return {
+                'message': 'File shared successfully',
+                'public_url': public_url,
+                'expiration_date': expiration_date.isoformat(),
+                'file_id': file_id,
+                'file_name': file_record['filename']
+            }, 200
+            
+        except Exception as e:
+            return {'message': f'Error sharing file: {str(e)}'}, 500
